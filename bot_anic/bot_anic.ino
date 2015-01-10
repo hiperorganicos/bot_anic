@@ -4,6 +4,7 @@
 
 // IMPORTANDO LIBS
 
+#include <NanoSoftSensor.h>
 #include <FiniteStateMachine.h>
 #include <AFMotor.h>
 #include <color.h>
@@ -15,42 +16,66 @@ State equalizandoLDR = State(equalizandoLDREnter, equalizandoLDRUpdate, motorExi
 State procurandoLuz = State(procurandoLuzEnter, procurandoLuzUpdate, motorExit);
 State estimulos = State(estimulosEnter, estimulosUpdate, motorExit);
 State fuga = State(fugaEnter, fugaUpdate, motorExit);
+State rezinha = State(rezinhaEnter, rezinhaUpdate, motorExit);
+State andadinha = State(andadinhaEnter, andadinhaUpdate, motorExit);
 
 FSM bot_anic = FSM(percebendo);
 
+// CORES
+// 1.0 - verde - planta
+// 0.40 azul - parado
+// 0.60 rosa - fuga
+// 0.67 vermelho - nao pode interagir
+// 0.75 amarelo - luz
+
 // VARIAVEIS
 
-#define NUMREADINGS 10
+const float cores[] = {
+  1.0,0.40,0.60,0.67,0.90};
 
-const int ldr1pin = A1;
-const int ldr2pin = A3;
+const int plant4[] = {50,350}; // range
+const int plant5[] = {50,350}; // range
 
 const int plant1pin = A4;
 const int plant2pin = A5;
+const int ldr1pin = A1;
+const int ldr2pin = A3;
 
 const int speed1 = 255;
 const int speed2 = 255;
 
+int plant1 = 0;
+int plant2 = 0;
+
 int ldr1 = 0;
 int ldr2 = 0;
 
-const int minPlanta = 400;
-const int maxPlanta = 420;
+float HUE = 0;
 
-int index = 0;
-int plant1 = 0;
-int plant2 = 0;
-int plant1total = 0;
-int plant2total = 0;
-int plant1arr[NUMREADINGS];
-int plant2arr[NUMREADINGS];
+boolean isRandom = 0;
+boolean isRainbow = 0;
 
-boolean plant = true;
+NanoSoftSensor ldrsuave1 = NanoSoftSensor(10);
+NanoSoftSensor ldrsuave2 = NanoSoftSensor(10);
 
-int difmin = 100;// resolucao do LDR --- tentar com 50 ou menor. Qt menor mais sensivel
+NanoSoftSensor plantronic1 = NanoSoftSensor(20);
+NanoSoftSensor plantronic2 = NanoSoftSensor(20);
 
-AF_DCMotor Motor_Left(2, MOTOR12_64KHZ);
-AF_DCMotor Motor_Right(4, MOTOR12_64KHZ);
+float p4 = 0;
+float p5 = 0;
+
+boolean cantEstimulatePlant = true;
+
+int estimulos_count = 0;
+int fuga_count = 0;
+int luz_count = 0;
+int rezinha_count = 0;
+int andadinha_count = 0;
+
+int difmin = 50;
+
+AF_DCMotor Motor_Left(1, MOTOR12_64KHZ);
+AF_DCMotor Motor_Right(2, MOTOR12_64KHZ);
 
 
 int leds[] = {5,9,10}; 
@@ -60,132 +85,136 @@ float hue = 0;
 // SETUP
 
 void setup() {
-  
+
   Serial.begin(9600);
 
   Motor_Left.setSpeed(speed1);
   Motor_Right.setSpeed(speed1);
-  
-   for (int i = 0; i < NUMREADINGS; i++){
-     plant1arr[i] = 0;
-     plant2arr[i] = 0;
-   }
-   
-   for(int j = 0 ; j < 3; j++ ){
-    //pinMode(leds[j], OUTPUT); 
-   }
 
+  pinMode(13, INPUT);
 }
 
 // LOOP
 
 void loop() {
 
-  ldr1 = 1023 - analogRead(ldr1pin);
-  ldr2 = 1023 - analogRead(ldr2pin);
-  
+  ldr1 = ldrsuave1.update(1023 - analogRead(ldr1pin));
+  ldr2 = ldrsuave2.update(1023 - analogRead(ldr2pin));
+
   // media plantronic
-  
-  plant1total -= plant1arr[index];
-  plant2total -= plant2arr[index];
 
-  int teste1 = plant1arr[index] = analogRead(plant1pin);
-  int teste2 = plant2arr[index] = analogRead(plant2pin);
-  
-  plant1total += plant1arr[index];
-  plant2total += plant2arr[index];
-  
-  index = (index + 1) % NUMREADINGS;
+  int raw1 = analogRead(plant1pin);
+  int raw2 = analogRead(plant2pin);
 
-  plant1 = plant1total / NUMREADINGS;
-  plant2 = plant2total / NUMREADINGS;
-  
-  if(!plant && plant2 < maxPlanta){
-    Serial.println('PLANTTTTT');
-    plant = true;
+  plant1 = plantronic1.update(raw1);
+  plant2 = plantronic2.update(raw2);
+
+  p4 = float(plant1 - plant4[0]) / (plant4[1]-plant4[0]);
+  p5 = float(plant2 - plant5[0]) / (plant5[1]-plant5[0]);
+
+
+  if(cantEstimulatePlant == false && (p4 < .5 || p5 < .5)){
+    cantEstimulatePlant = true;
     bot_anic.transitionTo(estimulos);
   }
-  else if(plant && plant2 > maxPlanta){
-    plant = false;
+  else if(cantEstimulatePlant == true && p4 > .5 && p5 > .5 ){
+    cantEstimulatePlant = false;
   }
-  
+
+  if(digitalRead(13) == LOW){
+    bot_anic.transitionTo(fuga);
+  }
+
   // serial print
-  
+
+  Serial.print("ldr1 ");
   Serial.print(ldr1);
-  Serial.print("\t");
+  Serial.print(" ldr2 ");
   Serial.print(ldr2);
-  Serial.print("\t");
+  Serial.print(" esquerda4 ");
   Serial.print(plant1);
-  Serial.print("\t");
+  Serial.print(" direita5 ");
   Serial.print(plant2);
-  Serial.print("\t");
-  Serial.print(teste1);
-  Serial.print("\t");
-  Serial.print(teste2);
+  Serial.print(" p4 ");
+  Serial.print(p4);
+  Serial.print(" p5 ");
+  Serial.print(p5);
+  Serial.print(" ");
+  Serial.print(digitalRead(13));
   Serial.println();
-  
+
   bot_anic.update();
-  
+
   //display_color(cur_color);
   rainbow();
-  
+
 }
 
 // DESLIGA MOTOR EM TODAS AS SAIDAS DE ESTADOS
 
 void motorExit(){
+  isRandom = false;
+  isRainbow = false;
   Motor_Left.run(RELEASE);
   Motor_Right.run(RELEASE);
   Serial.println("motor---Exit");
-  delay(100);
+  delay(20);
 }
 
 // ESTADO PERCEPTIVO
 void percebendoEnter() {
+  //isRandom = true;
+  isRainbow = true;
   Serial.println("percebendo---Enter");
 }
 void percebendoUpdate() {
-  
+
   int dif = abs(ldr1-ldr2);
-  
+
   if(dif > difmin){
     bot_anic.transitionTo(equalizandoLDR);
   }
   Serial.println("percebendo---Update");
-  delay(100);
+  delay(20);
 }
 
 // ESTADO EQUALIZADOR DOS LDR
 void equalizandoLDREnter() {
-  if(ldr1>ldr2){
+  isRainbow = true;
+  if(ldr1<ldr2){
     Motor_Left.run(FORWARD);
     Motor_Right.run(BACKWARD);
-  } else {
+  } 
+  else {
     Motor_Left.run(BACKWARD);
     Motor_Right.run(FORWARD);
   }
+  HUE = 0.75;
   Serial.println("equalizandoLDR---Enter");
 }
 void equalizandoLDRUpdate() {
-  
+
   int dif = abs(ldr1-ldr2);
-  
+
   if(dif < difmin){
-    
-    if(ldr1 > 500 && ldr2 > 500){ // aqui depende da intensidade da luz
+
+    if(ldr1 > 700 && ldr2 > 700){ // aqui depende da intensidade da luz
       bot_anic.transitionTo(procurandoLuz);
-    } else {
-      bot_anic.transitionTo(percebendo);
+    } 
+    else {
+      bot_anic.transitionTo(estimulos);
     }
-    
+
   }
   Serial.println("equalizandoLDR---Update");
-  delay(100);
-  
+  delay(20);
+
 }
 
 // ESTADO PROCURANDO LUZ MAIS INTENSA
 void procurandoLuzEnter() {
+  isRainbow = true;
+  luz_count = 0;
   Motor_Left.setSpeed(speed2);
   Motor_Right.setSpeed(speed2);
   Motor_Left.run(BACKWARD);
@@ -193,57 +222,153 @@ void procurandoLuzEnter() {
   Serial.println("procurandoLuz---Enter");
 }
 void procurandoLuzUpdate() {
-  if(ldr1 > 700 && ldr2 > 700){
-    bot_anic.transitionTo(percebendo);
+  if(ldr1 > 900 && ldr2 > 900){
+    bot_anic.transitionTo(rezinha);
   }
-  
+  if(luz_count > 50){
+    bot_anic.transitionTo(equalizandoLDR);
+  }
+
+  luz_count++;
   int dif = abs(ldr1-ldr2);
-  
+
   if(dif > difmin){
     bot_anic.transitionTo(equalizandoLDR);
   }
-  
+
   Serial.println("procurandoLuz---Update");
-  delay(100);
+  delay(20);
 }
 
 // ESTADO RECEBENDO ESTIMULOS
 void estimulosEnter() {
+  estimulos_count = 0;
   Motor_Left.setSpeed(speed2);
   Motor_Right.setSpeed(speed2);
   Motor_Left.run(FORWARD);
   Motor_Right.run(FORWARD);
   Serial.println("estimulos---Enter");
+  HUE = 1;
 }
 void estimulosUpdate() {
-  
-  if(digitalRead(13) == LOW){
-    bot_anic.transitionTo(fuga);
-  }
-  else if(plant2 < minPlanta || plant2 > maxPlanta){
+  if(estimulos_count > 100){
     bot_anic.transitionTo(percebendo);
   }
-  
-  Serial.println("estimulos---Update");
-  delay(100);
+  if(estimulos_count % 20){
+    Motor_Left.run(RELEASE);
+    Motor_Right.run(RELEASE);
+    if(p4>p5){
+      Motor_Left.setSpeed(speed2 -speed2/2);
+      Motor_Right.setSpeed(speed2);
+    } 
+    else {
+      Motor_Left.setSpeed(speed2);
+      Motor_Right.setSpeed(speed2 -speed2/2);
+    }
+    Motor_Left.run(FORWARD);
+    Motor_Right.run(FORWARD);    
+  }
+  estimulos_count++;
+  Serial.print("estimulos---Update");
+  Serial.println(estimulos_count);
+  delay(20);
 }
 
+// ESTA FUGINDO
+void fugaEnter() {
+  fuga_count = 0;
+  Motor_Left.setSpeed(speed2);
+  Motor_Right.setSpeed(speed2);
+  Motor_Left.run(BACKWARD);
+  Motor_Right.run(BACKWARD);
+  HUE = 0.60;
+  Serial.println("fuga---Enter");
+}
+void fugaUpdate() {
+  if(fuga_count > 30){
+    bot_anic.transitionTo(equalizandoLDR);
+  }
+  fuga_count++;
+  Serial.print("fuga---Update--");
+  Serial.println(fuga_count);
+  delay(20);
+}
+
+// REZINHA
+
+void rezinhaEnter() {
+  isRainbow = true;
+  rezinha_count = 0;
+  Motor_Left.setSpeed(speed2);
+  Motor_Right.setSpeed(speed2);
+  Motor_Left.run(BACKWARD);
+  Motor_Right.run(BACKWARD);
+  HUE = 0.60;
+  Serial.println("rezinha---Enter");
+}
+void rezinhaUpdate() {
+  if(rezinha_count > 15){
+    bot_anic.transitionTo(percebendo);
+  }
+  rezinha_count++;
+  Serial.print("rezinha---Update--");
+  Serial.println(rezinha_count);
+  delay(20);
+}
+
+// ANDADINHA
+
+void andadinhaEnter() {
+  isRainbow = true;
+  andadinha_count = 0;
+  Motor_Left.setSpeed(speed2);
+  Motor_Right.setSpeed(speed2);
+  Motor_Left.run(FORWARD);
+  Motor_Right.run(FORWARD);
+  HUE = 0.60;
+  Serial.println("andadinha---Enter");
+}
+void andadinhaUpdate() {
+  if(andadinha_count > 30){
+    bot_anic.transitionTo(equalizandoLDR);
+  }
+  andadinha_count++;
+  Serial.print("andadinha---Update--");
+  Serial.println(andadinha_count);
+  delay(20);
+}
 
 // COLOR
 
 void rainbow(){
-  hue += 0.01;
-  if ( hue >=1 ) hue = 0;
+  if(isRandom){
+    delay(1000);
+    hue = cores[int(random(0,4))];
+  } 
+  else if(isRainbow){
+    hue += 0.01;  
+  } 
+  else if(abs(HUE - hue) > 0.07){
+    hue += 0.05;
+  }
+  if ( hue >=1 ) hue = 0;  
   float sat = 1.0;
-  float val = 0.4;
+  float val = 0.6;
   cur_color.convert_hcl_to_rgb(hue,sat,val);
   display_color(cur_color);
+  /*
+  Serial.print(HUE);
+   Serial.print(' ');
+   Serial.print(hue);
+   Serial.println();//*/
+  //delay(20);
 }
 
 void display_color(Color c){
   analogWrite(leds[0], c.red);
   analogWrite(leds[1], c.green);
   analogWrite(leds[2], c.blue);
+  //delay(20);
 }
 
 
@@ -280,4 +405,5 @@ What pins are not used on the motor shield?
  Digital pin 10: Servo #2 control
  
  */
+
 
