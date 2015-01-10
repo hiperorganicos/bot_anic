@@ -14,6 +14,7 @@ State percebendo = State(percebendoEnter, percebendoUpdate, motorExit);
 State equalizandoLDR = State(equalizandoLDREnter, equalizandoLDRUpdate, motorExit);
 State procurandoLuz = State(procurandoLuzEnter, procurandoLuzUpdate, motorExit);
 State estimulos = State(estimulosEnter, estimulosUpdate, motorExit);
+State fuga = State(fugaEnter, fugaUpdate, motorExit);
 
 FSM bot_anic = FSM(percebendo);
 
@@ -46,7 +47,7 @@ int plant2arr[NUMREADINGS];
 
 boolean plant = true;
 
-int difmin = 100;
+int difmin = 100;// resolucao do LDR --- tentar com 50 ou menor. Qt menor mais sensivel
 
 AF_DCMotor Motor_Left(2, MOTOR12_64KHZ);
 AF_DCMotor Motor_Right(4, MOTOR12_64KHZ);
@@ -126,7 +127,7 @@ void loop() {
   bot_anic.update();
   
   //display_color(cur_color);
-  //rainbow();
+  rainbow();
   
 }
 
@@ -171,7 +172,7 @@ void equalizandoLDRUpdate() {
   
   if(dif < difmin){
     
-    if(ldr1 > 500 && ldr2 > 500){
+    if(ldr1 > 500 && ldr2 > 500){ // aqui depende da intensidade da luz
       bot_anic.transitionTo(procurandoLuz);
     } else {
       bot_anic.transitionTo(percebendo);
@@ -215,7 +216,11 @@ void estimulosEnter() {
   Serial.println("estimulos---Enter");
 }
 void estimulosUpdate() {
-  if(plant2 < minPlanta || plant2 > maxPlanta){
+  
+  if(digitalRead(13) == LOW){
+    bot_anic.transitionTo(fuga);
+  }
+  else if(plant2 < minPlanta || plant2 > maxPlanta){
     bot_anic.transitionTo(percebendo);
   }
   
@@ -233,14 +238,12 @@ void rainbow(){
   float val = 0.4;
   cur_color.convert_hcl_to_rgb(hue,sat,val);
   display_color(cur_color);
-  delay(20);
 }
 
 void display_color(Color c){
   analogWrite(leds[0], c.red);
   analogWrite(leds[1], c.green);
   analogWrite(leds[2], c.blue);
-  delay(20);
 }
 
 
